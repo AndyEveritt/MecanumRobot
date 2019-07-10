@@ -1,14 +1,27 @@
 #include <SoftwareSerial.h>
+#include <AccelStepper.h>
 
 void decodeMsg(String data, String &componentType, String &componentNum, String &command);
 String getValue(String data, char separator, int index);
 void updateLED(String state);
+
+typedef struct {
+  int translateX;
+  int translateY;
+  int theta;
+} DriveCommand;
 
 SoftwareSerial Bluetooth(A8, 38); // Arduino(RX, TX) - HC-05 Bluetooth (TX, RX)
 String msg = "";                  // string received by HC-05
 String componentType = "";        // type of component to control, eg led, motor, servo, etc.
 String componentNum = "";         // which component in type to control, eg led0, led1, etc.
 String command = "";              // command to send to component
+
+DriveCommand driveCommand;
+AccelStepper WheelFL(1, 40, 41);  // (Type:driver, STEP, DIR) - Stepper 1
+AccelStepper WheelFR(1, 42, 43);  // Stepper 2
+AccelStepper WheelBL(1, 46, 47);  // Stepper 3
+AccelStepper WheelBR(1, 44, 45);  // Stepper 4
 
 int ledPins[] = {7, 37};
 
@@ -22,6 +35,7 @@ void decodeMsg(String msg, String &componentType, String &componentNum, String &
   command = getValue(msg, ' ', 2);
 }
 
+/* Separate a string about a specific charactor */
 String getValue(String data, char separator, int index)
 {
   int found = 0;
@@ -38,6 +52,30 @@ String getValue(String data, char separator, int index)
     }
   }
   return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
+}
+
+/* decodes the command recieved for driving from mobile app */
+void decodeDriveMsg(String msg, DriveCommand &driveCommand)
+{
+  driveCommand.translateX = getValue(msg, ',', 0).toInt();
+  driveCommand.translateY = getValue(msg, ',', 1).toInt();
+  driveCommand.theta      = getValue(msg, ',', 2).toInt();
+}
+
+/* updates stepper motor speeds */
+void updateDrive(DriveCommand driveCommand)
+{
+  int speedFL, speedFR, speedBL, speedBR;
+
+  speedFL = driveCommand.translateX + driveCommand.translateY + driveCommand.theta;
+  speedFR = driveCommand.translateX - driveCommand.translateY - driveCommand.theta;
+  speedBL = driveCommand.translateX + driveCommand.translateY - driveCommand.theta;
+  speedBR = driveCommand.translateX - driveCommand.translateY + driveCommand.theta;
+
+  WheelFL.setSpeed(speedFL);
+  WheelFR.setSpeed(speedFR);
+  WheelBL.setSpeed(speedBL);
+  WheelBR.setSpeed(speedBR);
 }
 
 void updateLED(int pin, String state)
@@ -63,6 +101,12 @@ void setup()
     digitalWrite(ledPins[i], LOW);
   }
 
+  // Set initial max speed for stepper motors
+  WheelFL.setMaxSpeed(3000);
+  WheelFR.setMaxSpeed(3000);
+  WheelBL.setMaxSpeed(3000);
+  WheelBR.setMaxSpeed(3000);
+
   Serial.begin(38400);    // Default communication rate of the Bluetooth module
   Bluetooth.begin(38400); // Default communication rate of the Bluetooth module
   Bluetooth.setTimeout(1);
@@ -70,6 +114,7 @@ void setup()
 
 void loop()
 {
+  // get Serial msg
   if (Bluetooth.available() > 0)
   {                               // Checks whether data is comming from the serial port
     msg = Bluetooth.readString(); // Reads the data from the serial port
@@ -80,6 +125,7 @@ void loop()
     Serial.println();
   }
 
+  // component controller
   if (componentType == "led")
   {
     int ledNum = componentNum.toInt();
@@ -87,6 +133,13 @@ void loop()
     updateLED(ledPins[ledNum], command);
   }
 
+  if (componentType == "drive")
+  {
+    decodeDriveMsg(command, driveCommand);
+    updateDrive(driveCommand);
+  }
+
+  // reset msg
   componentType = "";
   componentNum = "";
   command = "";
