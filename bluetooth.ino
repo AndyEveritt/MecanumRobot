@@ -25,6 +25,8 @@ AccelStepper WheelBR(1, 44, 45);  // Stepper 4
 
 int ledPins[] = {7, 37};
 
+int speedMulti = 10;
+
 /* decodes the string received by the HC-05 bluetooth module */
 void decodeMsg(String msg, String &componentType, String &componentNum, String &command)
 {
@@ -54,7 +56,7 @@ String getValue(String data, char separator, int index)
   return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
 }
 
-/* decodes the command recieved for driving from mobile app */
+/* decodes the command received for driving from mobile app */
 void decodeDriveMsg(String msg, DriveCommand &driveCommand)
 {
   driveCommand.translateX = getValue(msg, ',', 0).toInt();
@@ -67,10 +69,12 @@ void updateDrive(DriveCommand driveCommand)
 {
   int speedFL, speedFR, speedBL, speedBR;
 
-  speedFL = driveCommand.translateX + driveCommand.translateY + driveCommand.theta;
-  speedFR = driveCommand.translateX - driveCommand.translateY - driveCommand.theta;
-  speedBL = driveCommand.translateX + driveCommand.translateY - driveCommand.theta;
-  speedBR = driveCommand.translateX - driveCommand.translateY + driveCommand.theta;
+  speedFL = speedMulti * ( driveCommand.translateY + driveCommand.translateX + driveCommand.theta);
+  speedFR = speedMulti * (-driveCommand.translateY + driveCommand.translateX + driveCommand.theta);
+  speedBL = speedMulti * ( driveCommand.translateY - driveCommand.translateX + driveCommand.theta);
+  speedBR = speedMulti * (-driveCommand.translateY - driveCommand.translateX + driveCommand.theta);
+
+  Bluetooth.println((String)speedFL+" "+speedFR+"\n"+speedBL+" "+speedBR);
 
   WheelFL.setSpeed(speedFL);
   WheelFR.setSpeed(speedFR);
@@ -138,6 +142,11 @@ void loop()
     decodeDriveMsg(command, driveCommand);
     updateDrive(driveCommand);
   }
+
+  WheelFL.runSpeed();
+  WheelFR.runSpeed();
+  WheelBL.runSpeed();
+  WheelBR.runSpeed();
 
   // reset msg
   componentType = "";
